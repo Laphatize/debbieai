@@ -1,0 +1,8 @@
+{
+  "name": "project_1743272431012",
+  "version": "1.0.0",
+  "description": "make the html work with the main.js thing",
+  "scripts": {
+    "start": "node index.js"
+  }
+}

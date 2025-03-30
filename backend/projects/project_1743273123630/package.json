@@ -1,0 +1,8 @@
+{
+  "name": "project_1743273123630",
+  "version": "1.0.0",
+  "description": "Manual deployment",
+  "scripts": {
+    "start": "node index.js"
+  }
+}

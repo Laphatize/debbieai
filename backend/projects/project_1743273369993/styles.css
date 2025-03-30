@@ -1,0 +1,6 @@
+/* Your styles here */
+
+// New changes:
+.calculator { width: 200px; }
+.display { width: 100%; }
+.digit, .operation, .equal { width: 20%; }

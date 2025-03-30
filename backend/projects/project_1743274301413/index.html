@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Calculator</title>
+    <link rel='stylesheet' type='text/css' href='styles.css'>
+</head>
+<body>
+    <div class='calculator'>
+        <div class='display'><input type='text' id='calc-display' value='' frontEndonly></div>
+        <div class='keypad'>
+            <button data-digit='7'>7</button>
+            <button data-digit='8'>8</button>
+            <button data-digit='9'>9</button>
+            <button data-operator='+'>+</button>
+            <button data-digit='4'>4</button>
+            <button data-digit='5'>5</button>
+            <button data-digit='6'>6</button>
+            <button data-operator='-'>-</button>
+            <button data-digit='1'>1</button>
+            <button data-digit='2'>2</button>
+            <button data-digit='3'>3</button>
+            <button data-operator='*'>*</button>
+            <button data-digit='0'>0</button>
+            <button data-digit='.'>.</button>
+            <button id='calc-equals'>=</button>
+            <button data-operator='/'>/</button>
+        </div>
+        <button id='calc-clear'>C</button>
+    </div>
+    <script src='script.js'></script>
+</body>
+</html>

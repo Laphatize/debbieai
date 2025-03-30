@@ -1,0 +1,33 @@
+.calculator {
+    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+div.display {
+    margin-bottom: 10px;
+}
+
+input#calc-display {
+    width: 180px;
+    height: 30px;
+    text-align: right;
+}
+
+div.keypad {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+}
+
+button {
+    width: 40px;
+    height: 40px;
+}
+
+button#calc-clear {
+    margin-top: 10px;
+    width: 180px;
+}

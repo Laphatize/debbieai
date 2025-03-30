@@ -1,0 +1,27 @@
+body {
+	font-family: Arial, sans-serif;
+}
+
+header {
+	background-color: #f0f0f0;
+	padding: 10px;
+	text-align: center;
+}
+
+section {
+	margin: 20px;
+}
+
+form {
+	display: flex;
+	flex-direction: column;
+}
+
+form label {
+	margin-top: 10px;
+}
+
+form input {
+	margin-top: 5px;
+	margin-bottom: 10px;
+}

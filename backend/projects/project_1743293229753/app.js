@@ -1,0 +1,1 @@
+// This is where your JavaScript code will go. For a static site, you might not need much JS, unless you want to add interactivity.

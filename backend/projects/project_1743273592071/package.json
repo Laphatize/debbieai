@@ -1,0 +1,8 @@
+{
+  "name": "project_1743273592063",
+  "version": "1.0.0",
+  "description": "Generate a basic HTML calculator.",
+  "scripts": {
+    "start": "node index.js"
+  }
+}

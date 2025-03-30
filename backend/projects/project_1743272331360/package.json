@@ -1,0 +1,8 @@
+{
+  "name": "project_1743272331360",
+  "version": "1.0.0",
+  "description": "make a funny joke web page",
+  "scripts": {
+    "start": "node index.js"
+  }
+}

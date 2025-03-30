@@ -1,0 +1,1 @@
+// This is a placeholder for any potential future JavaScript functionality

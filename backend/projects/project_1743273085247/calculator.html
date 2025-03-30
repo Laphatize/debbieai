@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title> Simple Calculator</title>
+<link href='styles.css' rel='stylesheet'>
+</head>
+<body>
+<div class='calculator'>
+<form name='calc'>
+<input type='text' readonly='readonly' id='result'>
+</form>
+<div class='btns'>
+<input type='button' value='1' onclick='calc.txt.value += '1' '>
+<!-- add remaining buttons in similar manner -->
+<input type='button' value='+' onclick='calc.txt.value += '+' '>
+<!-- add remaining operators in similar manner -->
+<input type='button' value='=' onclick='calc.txt.value = eval(calc.txt.value) '>
+</div>
+</div>
+<script src='calculator.js'></script>
+</body>
+</html>

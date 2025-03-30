@@ -1,0 +1,8 @@
+{
+  "name": "project_1743273085247",
+  "version": "1.0.0",
+  "description": "My calculator.js file seems tmpy",
+  "scripts": {
+    "start": "node index.js"
+  }
+}
