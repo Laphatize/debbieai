@@ -1,1 +1,0 @@
-// This is a static page with no dynamic features, so no JavaScript is necessary at this time.

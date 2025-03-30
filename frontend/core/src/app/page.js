@@ -47,6 +47,8 @@ export default function Home() {
   const [isDeploying, setIsDeploying] = useState(false);
   const iframeRef = useRef(null);
   const [fileHistory, setFileHistory] = useState(new Map());
+  const [modelProvider, setModelProvider] = useState('openai'); // Default to OpenAI
+  const [cloudflareUrl, setCloudflareUrl] = useState(null);
 
   // Get current file content for editor
   const currentFile = openFiles.find(f => f.id === activeFileId) || openFiles[0];
@@ -285,26 +287,33 @@ export default function Home() {
         // Include last 5 messages for context
         messageHistory: messages.slice(-5),
         // Flag if this is a follow-up request
-        isFollowUp: openFiles.some(f => f.name === 'index.html')
+        isFollowUp: messages.length > 1
       };
 
-      // Generate code
+      // Send to backend
       const response = await fetch('http://localhost:3001/api/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           prompt: inputMessage,
-          context: currentState
-        })
+          context: currentState,
+          modelProvider: modelProvider // Include the selected model provider
+        }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to generate code');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to get AI response');
       }
 
-      const { explanation, files } = await response.json();
+      const data = await response.json();
       
-      // Update files without deploying
+      // Extract files and explanation
+      const { files, explanation } = data;
+      
+      // Update files in editor
       updateFiles(files);
 
       // Add message with deployment instructions
@@ -411,71 +420,154 @@ export default function Home() {
     }
   }, []);
 
-  // Update the handleDeploy function to use refreshPreview
-  const handleDeploy = async () => {
-    if (!openFiles.length) {
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: 'No files to deploy. Please create some files first.'
-      }]);
+  // Update the connectToWebSocket function to handle browser environment
+  const connectToWebSocket = (projectId) => {
+    if (wsRef.current) {
+      wsRef.current.close();
+    }
+    
+    // Skip WebSocket connection if we're in the browser and the backend doesn't support it
+    if (typeof window === 'undefined') {
       return;
     }
-
-    setIsAiThinking(true);
-    setIsPreviewLoading(true); // Start loading
+    
     try {
-      // Check backend connectivity first
-      try {
-        const healthCheck = await fetch('http://localhost:3001/health');
-        if (!healthCheck.ok) {
-          throw new Error('Backend health check failed');
+      // Use the browser's native WebSocket
+      const wsUrl = `ws://localhost:3001/ws/${projectId}`;
+      console.log(`Attempting to connect to WebSocket at ${wsUrl}`);
+      
+      // Check if WebSocket is supported
+      if (!window.WebSocket) {
+        console.log('WebSocket not supported in this browser');
+        return;
+      }
+      
+      const ws = new window.WebSocket(wsUrl);
+      
+      ws.onopen = () => {
+        console.log('WebSocket connection established');
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'log') {
+            setTerminalOutput(prev => prev + '\n' + data.message);
+          }
+        } catch (error) {
+          console.error('Failed to parse WebSocket message:', error);
         }
+      };
+      
+      ws.onerror = (error) => {
+        console.log('WebSocket error - this is normal if the backend doesn\'t support WebSockets');
+      };
+      
+      ws.onclose = () => {
+        console.log('WebSocket connection closed');
+      };
+      
+      wsRef.current = ws;
+    } catch (error) {
+      console.log('WebSocket connection failed - this is expected if the backend doesn\'t support it');
+    }
+  };
+
+  // Update the deployProject function to make WebSocket optional
+  const deployProject = async () => {
+    if (isDeploying) return;
+    
+    setIsDeploying(true);
+    setPreviewUrl(null);
+    setCloudflareUrl(null);
+    
+    try {
+      // Check backend
+      try {
+        await fetch('http://localhost:3001/health');
       } catch (error) {
         throw new Error('Backend server is not running. Please start the backend server first.');
       }
-
-      // Deploy project
-      const projectName = `project_${Date.now()}`;
-      const deployResponse = await fetch('http://localhost:3001/api/projects', {
+      
+      // Get current files
+      const filesToDeploy = openFiles.map(f => ({
+        name: f.name,
+        content: f.content,
+        language: f.language
+      }));
+      
+      // Send to backend
+      const response = await fetch('http://localhost:3001/api/projects', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          name: projectName,
-          description: 'Manual deployment',
-          files: openFiles
-        })
+          files: filesToDeploy
+        }),
       });
-
-      if (!deployResponse.ok) {
-        const errorData = await deployResponse.json();
-        throw new Error(errorData.error || 'Deployment failed');
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to deploy project');
       }
-
-      const { port, url } = await deployResponse.json();
       
-      // Wait for 3 seconds before showing preview
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      const data = await response.json();
+      console.log('Deployment successful:', data);
       
-      // Set the preview URL and refresh
-      setPreviewUrl(url);
-      setActiveView('preview');
+      // Set project ID and preview URL
+      setProjectId(data.projectId);
+      setPreviewUrl(data.url);
       
-      // Add a small delay before refreshing the preview
-      setTimeout(refreshPreview, 100);
+      // Set Cloudflare URL if available
+      if (data.cloudflareUrl) {
+        setCloudflareUrl(data.cloudflareUrl);
+        
+        // Add a message about the Cloudflare URL
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Your project is now deployed! 🚀\n\nLocal URL: ${data.url}\nPublic URL: ${data.cloudflareUrl}\n\nYou can share the public URL with anyone, and they can access your project from anywhere.`
+        }]);
+      } else {
+        // Add a message about the local URL
+        setMessages(prev => [...prev, {
+          role: 'assistant',
+          content: `Your project is deployed locally at: ${data.url}`
+        }]);
+      }
       
-      setMessages(prev => [...prev, {
-        role: 'assistant',
-        content: `✅ Project deployed successfully!\n\nYou can view your site at: ${url}`
-      }]);
+      // Connect to WebSocket for logs (only if the backend supports it)
+      try {
+        // Make this optional - don't let it break deployment if it fails
+        if (typeof window !== 'undefined' && window.WebSocket) {
+          connectToWebSocket(data.projectId);
+        }
+      } catch (wsError) {
+        // Just log and continue - don't let WebSocket issues break deployment
+        console.log('WebSocket connection not available (this is normal)');
+      }
+      
+      // Add this to the deployProject function, after the deployment is successful
+      if (!data.cloudflareUrl) {
+        // If no Cloudflare URL was returned, set up a check to poll for it
+        const checkInterval = setInterval(() => {
+          checkForCloudflareUrl(data.projectId);
+        }, 5000); // Check every 5 seconds
+        
+        // Stop checking after 30 seconds
+        setTimeout(() => {
+          clearInterval(checkInterval);
+        }, 30000);
+      }
+      
     } catch (error) {
       console.error('Deployment error:', error);
       setMessages(prev => [...prev, {
         role: 'assistant',
-        content: `⚠️ ${error.message}\n\nTroubleshooting steps:\n1. Ensure backend is running\n2. Check console for errors`
+        content: `Deployment failed: ${error.message}`
       }]);
     } finally {
-      setIsAiThinking(false);
-      setIsPreviewLoading(false); // End loading
+      setIsDeploying(false);
     }
   };
 
@@ -518,20 +610,78 @@ export default function Home() {
     };
   }, []);
 
-  // Make the toggleListening function available globally
+  // Add this function to toggle between model providers
+  const toggleModelProvider = () => {
+    setModelProvider(prev => prev === 'openai' ? 'gemini' : 'openai');
+  };
+
+  // Update the useEffect that exposes global functions
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.toggleSpeechRecognition = toggleListening;
       window.speakText = speakResponse;
+      window.toggleModelProvider = toggleModelProvider;
     }
     
     return () => {
       if (typeof window !== 'undefined') {
         delete window.toggleSpeechRecognition;
         delete window.speakText;
+        delete window.toggleModelProvider;
       }
     };
-  }, [toggleListening]);
+  }, [toggleListening, toggleModelProvider]);
+
+  // Add this function to your component, before the return statement
+  const formatMessageWithLinks = (text) => {
+    // Regex to match URLs, with special handling for localhost URLs and Cloudflare URLs
+    const urlRegex = /(https?:\/\/(?:localhost:[0-9]+|[^\s]+\.trycloudflare\.com|[^\s]+))/g;
+    
+    // Split the text by URLs
+    const parts = text.split(urlRegex);
+    
+    // Map each part - if it matches the regex, make it a link
+    return parts.map((part, i) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a 
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline"
+          >
+            {part}
+          </a>
+        );
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
+  // Add this function to check for Cloudflare URL if it wasn't available initially
+  const checkForCloudflareUrl = async (projectId) => {
+    if (cloudflareUrl) return; // Already have a URL
+    
+    try {
+      // Try to get the Cloudflare URL from the backend
+      const response = await fetch(`http://localhost:3001/api/projects/${projectId}/status`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.cloudflareUrl && data.cloudflareUrl !== cloudflareUrl) {
+          setCloudflareUrl(data.cloudflareUrl);
+          
+          // Add a message about the Cloudflare URL
+          setMessages(prev => [...prev, {
+            role: 'assistant',
+            content: `Your project is now available at a public URL! 🚀\n\nPublic URL: ${data.cloudflareUrl}\n\nYou can share this URL with anyone, and they can access your project from anywhere.`
+          }]);
+        }
+      }
+    } catch (error) {
+      console.error('Error checking for Cloudflare URL:', error);
+    }
+  };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -587,7 +737,7 @@ export default function Home() {
               Save
             </button>
             <button
-              onClick={handleDeploy}
+              onClick={deployProject}
               disabled={isDeploying || !openFiles.length}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 isDeploying || !openFiles.length
@@ -661,7 +811,7 @@ export default function Home() {
                       ? 'bg-neutral-100 dark:bg-neutral-900' 
                       : 'bg-neutral-900 dark:bg-white text-white dark:text-black'
                   }`}>
-                    {message.content}
+                    {formatMessageWithLinks(message.content)}
                   </div>
                 </div>
               ))}
@@ -718,6 +868,35 @@ export default function Home() {
                 ))}
               </div>
             )}
+
+            {/* Add model selector here, before the input */}
+            <div className="flex items-center mb-2">
+              <label className="text-sm text-neutral-500 dark:text-neutral-400 mr-2">AI Model:</label>
+              <div className="relative">
+                <select
+                  value={modelProvider}
+                  onChange={(e) => setModelProvider(e.target.value)}
+                  className="text-sm bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded pl-2 pr-8 py-1 appearance-none"
+                >
+                  <option value="openai">GPT-4o</option>
+                  <option value="gemini">Gemini</option>
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                  <div className={`w-2 h-2 rounded-full ${modelProvider === 'openai' ? 'bg-blue-500' : 'bg-green-500'}`}></div>
+                </div>
+              </div>
+              {/* Show model info tooltip */}
+              <div className="ml-1 group relative">
+                <svg className="w-4 h-4 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-48 p-2 bg-neutral-800 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                  {modelProvider === 'openai' ? 
+                    'OpenAI GPT-4o: Advanced model with strong coding abilities' : 
+                    'Google Gemini: Alternative AI model from Google'}
+                </div>
+              </div>
+            </div>
 
             <div className="flex gap-2">
               <div className="flex-1 flex gap-2">
@@ -808,7 +987,7 @@ export default function Home() {
                       </div>
                     </div>
                   ) : (
-                    <div className="w-full h-full relative">
+                    <div className="w-full h-full relative bg-white">
                       <iframe
                         key={previewUrl}
                         src={previewUrl}
@@ -842,6 +1021,31 @@ export default function Home() {
                               Undo changes
                             </button>
                           </p>
+                        </div>
+                      )}
+                      {cloudflareUrl && (
+                        <div className="mt-2 flex items-center">
+                          <span className="text-sm text-neutral-500 dark:text-neutral-400 mr-2">Public URL:</span>
+                          <a
+                            href={cloudflareUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline text-sm"
+                          >
+                            {cloudflareUrl}
+                          </a>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(cloudflareUrl);
+                              // Optional: Show a "copied" tooltip
+                            }}
+                            className="ml-2 p-1 rounded bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-300 dark:hover:bg-neutral-700"
+                            title="Copy to clipboard"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                            </svg>
+                          </button>
                         </div>
                       )}
                     </div>
